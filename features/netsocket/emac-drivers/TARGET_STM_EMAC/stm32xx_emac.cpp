@@ -1,3 +1,5 @@
+#if !defined(TARGET_STM32H7)
+
 #include <stdlib.h>
 
 #include "cmsis_os.h"
@@ -578,3 +580,5 @@ MBED_WEAK EMAC &EMAC::get_default_instance()
 {
     return STM32_EMAC::get_instance();
 }
+
+#endif // TARGET_STM32H7

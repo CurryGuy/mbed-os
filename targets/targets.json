@@ -2980,7 +2980,8 @@
             "STM32H7",
             "STM32H743",
             "STM32H743xI",
-            "STM32H743ZI"
+            "STM32H743ZI",
+            "STM_EMAC"
         ],
         "config": {
             "d11_configuration": {
@@ -3006,7 +3007,10 @@
         "macros_add": [
             "MBED_TICKLESS"
         ],
-        "overrides": { "lpticker_delay_ticks": 4 },
+        "overrides": {
+            "lpticker_delay_ticks": 4,
+            "network-default-interface-type": "ETHERNET"
+        },
         "supported_form_factors": ["ARDUINO"],
         "detect_code": ["0813"],
         "device_has_add": [
@@ -3015,7 +3019,8 @@
             "CRC",
             "TRNG",
             "FLASH",
-            "MPU"
+            "MPU",
+            "EMAC"
         ],
         "release_versions": ["2", "5"],
         "device_name": "STM32H743ZI",
