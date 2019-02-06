@@ -1,56 +1,58 @@
-/* Linker script to configure memory regions. */
+/*
+*****************************************************************************
+** Linker script for STM32H743XIHx
+*****************************************************************************
+*/
 
 #if !defined(MBED_APP_START)
-  #define MBED_APP_START 0x08000000
+    #define MBED_APP_START 0x08000000
 #endif
 
 #if !defined(MBED_APP_SIZE)
-  #define MBED_APP_SIZE 2048K
+    #define MBED_APP_SIZE 2048K
 #endif
+
+D1_START = 0x24000000;
+D1_SIZE  = 512K;
+
+NVIC_NUM_VECTORS  = 166;
+NVIC_VECTORS_SIZE = (NVIC_NUM_VECTORS * 4);
+
+DTCMRAM_START = 0x20000000 + NVIC_VECTORS_SIZE;
+DTCMRAM_SIZE  = 128K - NVIC_VECTORS_SIZE;
 
 M_CRASH_DATA_RAM_SIZE = 0x100;
 
+/* Specify the memory areas */
 MEMORY
-{ 
-  FLASH (rx) : ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE
-  RAM (rwx)  : ORIGIN = 0x20000298, LENGTH = 128K - 0x298
+{
+    FLASH   (rx ): ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE
+    DTCMRAM (xrw): ORIGIN = DTCMRAM_START,  LENGTH = DTCMRAM_SIZE
+    RAM_D1  (xrw): ORIGIN = D1_START,       LENGTH = D1_SIZE
+    RAM_D2  (xrw): ORIGIN = 0x30000000,     LENGTH = 288K
+    RAM_D3  (xrw): ORIGIN = 0x38000000,     LENGTH = 64K
+    ITCMRAM (xrw): ORIGIN = 0x00000000,     LENGTH = 64K
 }
 
-/* Linker script to place sections and symbol values. Should be used together
- * with other linker script that defines memory regions FLASH and RAM.
- * It references following symbols, which must be defined in code:
- *   Reset_Handler : Entry of reset handler
- * 
- * It defines following symbols, which code can use without definition:
- *   __exidx_start
- *   __exidx_end
- *   __etext
- *   __data_start__
- *   __preinit_array_start
- *   __preinit_array_end
- *   __init_array_start
- *   __init_array_end
- *   __fini_array_start
- *   __fini_array_end
- *   __data_end__
- *   __bss_start__
- *   __bss_end__
- *   __end__
- *   end
- *   __HeapLimit
- *   __StackLimit
- *   __StackTop
- *   __stack
- *   _estack
- */
+/* Entry Point */
 ENTRY(Reset_Handler)
 
+/* Highest address of the user mode stack */
+_estack = D1_START + D1_SIZE; /* end of RAM */
+/* Generate a link error if heap and stack don't fit into RAM */
+_Min_Heap_Size = 128K;  /* required amount of heap  */
+_Min_Stack_Size = 128K; /* required amount of stack */
+
+/* Define output sections */
 SECTIONS
 {
     .text :
     {
         KEEP(*(.isr_vector))
+        . = ALIGN(4);
         *(.text*)
+        *(.glue_7) /* glue arm to thumb code */
+        *(.glue_7t) /* glue thumb to arm code */
         KEEP(*(.init))
         KEEP(*(.fini))
 
@@ -71,6 +73,9 @@ SECTIONS
         *(.rodata*)
 
         KEEP(*(.eh_frame*))
+
+        . = ALIGN(4);
+        _etext = .; /* define a global symbols at end of code */
     } > FLASH
 
     .ARM.extab :
@@ -87,7 +92,7 @@ SECTIONS
 
     __etext = .;
     _sidata = .;
-    
+
     .crash_data_ram :
     {
         . = ALIGN(8);
@@ -98,7 +103,7 @@ SECTIONS
         . += M_CRASH_DATA_RAM_SIZE;
         . = ALIGN(8);
         __CRASH_DATA_RAM_END__ = .; /* Define a global symbol at data end */
-    } > RAM
+    } > DTCMRAM
 
     .data : AT (__etext)
     {
@@ -120,7 +125,6 @@ SECTIONS
         KEEP(*(.init_array))
         PROVIDE_HIDDEN (__init_array_end = .);
 
-
         . = ALIGN(8);
         /* finit data */
         PROVIDE_HIDDEN (__fini_array_start = .);
@@ -133,8 +137,7 @@ SECTIONS
         /* All data end */
         __data_end__ = .;
         _edata = .;
-
-    } > RAM
+    } > RAM_D1
 
     .bss :
     {
@@ -146,30 +149,45 @@ SECTIONS
         . = ALIGN(8);
         __bss_end__ = .;
         _ebss = .;
-    } > RAM
+    } > RAM_D1
 
-    .heap (COPY):
+    /* User_heap_stack section, used to check that there is enough RAM left */
+    ._user_heap_stack :
     {
+        . = ALIGN(8);
         __end__ = .;
-        end = __end__;
-        *(.heap*)
+        PROVIDE ( end = __end__ );
+        PROVIDE ( _end = __end__ );
+        . = . + _Min_Heap_Size;
         __HeapLimit = .;
-    } > RAM
+        . = . + _Min_Stack_Size;
+        . = ALIGN(8);
+    } > RAM_D1
 
-    /* .stack_dummy section doesn't contains any symbols. It is only
-     * used for linker to calculate size of stack sections, and assign
-     * values to stack symbols later */
-    .stack_dummy (COPY):
-    {
-        *(.stack*)
-    } > RAM
+    .lwip_sec (NOLOAD) : {
+        . = ABSOLUTE(0x30040000);
+        *(.RxDecripSection) 
 
-    /* Set stack top to end of RAM, and stack limit move down by
-     * size of stack_dummy section */
-    __StackTop = ORIGIN(RAM) + LENGTH(RAM);
-    _estack = __StackTop;
-    __StackLimit = __StackTop - SIZEOF(.stack_dummy);
+        . = ABSOLUTE(0x30040060);
+        *(.TxDecripSection)
+
+        . = ABSOLUTE(0x30040200);
+        *(.RxArraySection) 
+    } > RAM_D2 AT > FLASH
+
+    __StackTop = _estack;
+    __StackLimit = __StackTop - _Min_Stack_Size;
     PROVIDE(__stack = __StackTop);
+
+    /* Remove information from the standard libraries */
+    /DISCARD/ :
+    {
+        libc.a ( * )
+        libm.a ( * )
+        libgcc.a ( * )
+    }
+
+    .ARM.attributes 0 : { *(.ARM.attributes) }
 
     /* Check if data + heap + stack exceeds RAM limit */
     ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")
